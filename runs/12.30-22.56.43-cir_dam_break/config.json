@@ -1,0 +1,17 @@
+{
+    "seed": null,
+    "task": [
+        [
+            "...",
+            {
+                "iterations": 300,
+                "display_every": 100,
+                "callbacks": [
+                    "...",
+                    "...",
+                    "..."
+                ]
+            }
+        ]
+    ]
+}

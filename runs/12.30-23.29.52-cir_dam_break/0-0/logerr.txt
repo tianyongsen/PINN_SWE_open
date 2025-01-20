@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\main_formal.py", line 153, in <module>
+    trainer.train_all()
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\trainer.py", line 103, in train_all
+    model = get_model()
+            ^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\main_formal.py", line 92, in get_model_dde
+    swe_case = case_config[0](**case_config[1]())   #an instance of SWE problem
+                                ^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\cases\dynamic_cases.py", line 488, in __call__
+    self.inputs_to_SWE2D['mul']=self.mul
+                                ^^^^^^^^
+AttributeError: 'Dynamic_Tidal_Var_Rain_Case' object has no attribute 'mul'

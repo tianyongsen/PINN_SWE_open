@@ -1,0 +1,50 @@
+Traceback (most recent call last):
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\main_formal.py", line 153, in <module>
+    trainer.train_all()
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\trainer.py", line 103, in train_all
+    model = get_model()
+            ^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\main_formal.py", line 125, in get_model_dde
+    model = swe_case.create_model(net)               # create the PINN model
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\src\pde\baseclass.py", line 233, in create_model
+    self.data = dde.data.TimePDE(
+                ^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\data\pde.py", line 305, in __init__
+    super().__init__(
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\data\pde.py", line 114, in __init__
+    self.train_next_batch()
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\utils\internal.py", line 37, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\data\pde.py", line 162, in train_next_batch
+    self.train_x_all = self.train_points()
+                       ^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\utils\internal.py", line 37, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\data\pde.py", line 321, in train_points
+    X = super().train_points()
+        ^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\utils\internal.py", line 37, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\data\pde.py", line 232, in train_points
+    X = self.geom.random_points(
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\geometry\timedomain.py", line 90, in random_points
+    return geom.random_points(n, random=random)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\geometry\geometry_nd.py", line 84, in random_points
+    x = sample(n, self.dim, random)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\geometry\sampler.py", line 22, in sample
+    return quasirandom(n_samples, dimension, sampler)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\papers\PINN\PINN_SWE-mywork\PINN_SWE-mywork\deepxde\geometry\sampler.py", line 62, in quasirandom
+    sampler.generate(space, n_samples + skip)[skip:], dtype=config.real(np)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Programs\Miniconda3\envs\myenv\Lib\site-packages\skopt\sampler\hammersly.py", line 84, in generate
+    out = np.empty((n_dim, n_samples), dtype=float)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'float' object cannot be interpreted as an integer
