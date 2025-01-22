@@ -28,15 +28,12 @@ from cases.static_cases import  Static_Flat_Case,\
                                 Static_Step_Rain_Case,\
                                 Static_Tidal_Rain_Case   #10 cases
 
-from cases.dynamic_cases import Dynamic_Dam_Break_Var_Case,\
-                                Dynamic_Dam_Break_Var_Entropy_Case,\
+from cases.dynamic_cases import Dynamic_Dam_Break_Var_Cons_Case,\
+                                Dynamic_Dam_Break_Var_Cons_Entropy_Case,\
+                                Dynamic_Dam_Break_Primitive_Var_Case,\
                                 Dynamic_Tidal_Var_Case,\
-                                Dynamic_Cosine_Bump_Rain_Case,\
-                                Dynamic_Cosine_Depression_Rain_Case,\
                                 Dynamic_Tidal_Var_Rain_Case,\
-                                Dynamic_Circular_Dam_Break_Var_Case,\
-                                Dyanmic_Circular_Dam_Break_Var_Entropy_Case
-                                
+                                Dynamic_Circular_Dam_Break_Var_Case  #5 cases
 
 cases_list_static=[(SWE2D,Static_Flat_Case()),
            (SWE2D,Static_Cosine_Bump_Case()),
@@ -49,20 +46,20 @@ cases_list_static=[(SWE2D,Static_Flat_Case()),
            (SWE2D,Static_Step_Rain_Case()),
            (SWE2D,Static_Tidal_Rain_Case())
            ]
-cases_list_dynamic=[(SWE2D,Dynamic_Dam_Break_Var_Case()),
-                   (SWE2D,Dynamic_Dam_Break_Var_Entropy_Case()),
-                    (SWE2D,Dynamic_Cosine_Bump_Rain_Case()),
-                   (SWE2D,Dynamic_Cosine_Depression_Rain_Case()),
-                   (SWE2D,Dynamic_Tidal_Var_Rain_Case())
+cases_list_dynamic=[(SWE2D,Dynamic_Dam_Break_Var_Cons_Case()),
+                   (SWE2D,Dynamic_Dam_Break_Var_Cons_Entropy_Case()),
+                    (SWE2D,Dynamic_Dam_Break_Primitive_Var_Case()),
+                   (SWE2D,Dynamic_Tidal_Var_Case()),
+                   (SWE2D,Dynamic_Tidal_Var_Rain_Case()),
+                   (SWE2D,Dynamic_Circular_Dam_Break_Var_Case())
                     ]
 
-cases_list=cases_list_static
-# cases_list=cases_list_dynamic
+cases_list=cases_list_static+cases_list_dynamic
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PINN SWE')
-    parser.add_argument('--name', type=str, default="cir_dam_break")
+    parser.add_argument('--name', type=str, default="ALL_CASES")
     parser.add_argument('--device', type=str, default="cpu")  # set to "cpu" enables cpu training and set "0" for gpu training
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--hidden-layers', type=str, default='300*6')

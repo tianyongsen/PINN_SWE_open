@@ -8,13 +8,13 @@ class Static_BaseCase(ABC):
         self.datapath = None
         self.geom=[[-10,10],[-10,10]]        #the domain of (x,y)
         self.time=[0,5]                  #the time domain
-        self.pde_form = "VAR"   # see the SWE2D class for more details
+        self.pde_form = "VAR_CONS_ENTROPY_CONSERVATION"   # see the SWE2D class for more details
 
 
                                       # finally 1-h is the initial condition of h
         self.ics=[
             {'type': 'ic', 
-             'function': self.ic_func_of_h, #修改为函数
+             'function': self.ic_func_of_h, 
              'bc': 'initial', 
              'component': 0             #h
             },
@@ -118,7 +118,7 @@ class Static_BaseCase(ABC):
         }
         return self.inputs_to_SWE2D
 
-        #initial condition
+    #initial condition
     @abstractmethod
     def ic_func_of_h(self,points): 
         """The initial condition function of the component h
@@ -212,7 +212,7 @@ class Static_Cosine_Bump_Case(Static_BaseCase):
         index=np.where(x_square_add_y_square<self.radius**2)            # points in the unit circle
         h=np.zeros_like(x)                                              # out of the unit circle
         h[index]=self.height/2.*(1.+np.cos(np.pi/self.radius**2*x_square_add_y_square[index]))   # inside the unit circle
-        return (self.water_level-h)*100.      #cm   finally 1-h is the initial condition of h  
+        return self.water_level-h       #m   finally 1-h is the initial condition of h  
     
     def z_func(self,points)->tuple[torch.tensor,torch.tensor,torch.tensor]:
         """The topography function of z :unit :m
@@ -425,7 +425,7 @@ class Static_Rain_BaseCase(Static_BaseCase):
         self.geom=[[-10,10],[-10,10]]   #reset the domain (m)
         self.datapath = None
         self.time=[0,5]                  #the time domain (min)
-        self.pde_form = "VAR_ENTROPY_RAIN"       #see the SWE2D class for more detailssssss
+        self.pde_form = "VAR_CONS_ENTROPY_STABLE_DT_RAIN"       #see the SWE2D class for more detailssssss
         self.mul=4                       #the multiply of the training points
 
         self.ics=[
@@ -543,7 +543,6 @@ class Static_Rain_BaseCase(Static_BaseCase):
         _temp=torch.abs(points[:,2:]-2.5)/0.5
         ## the accumulative rainfall depth (m) is  0.024019249187982226 m
         rain=73.77884395200002*(_temp*0.13+18.1)/torch.pow(_temp+18.1,1.870) / 10. #cm/min
-        # rain=0.8*torch.sin(torch.pi/5*points[:,2:])   #  cm/min 2.546   easy case 
         return rain
 
 

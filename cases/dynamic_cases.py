@@ -19,12 +19,12 @@ class Dynamic_BaseCase:
         self.datapath = None
         self.geom=[[-10,10],[-10,10]]        #the domain of (x,y),m
         self.time=[0,5]                  #the time domain, seconds
-        self.pde_form = "VAR"   # see the SWE2D class for more details
+        self.pde_form = "VAR_CONS"   # see the SWE2D class for more details
 
                                       # finally 1-h is the initial condition of h
         self.ics=[
             {'type': 'ic', 
-             'function': self.ic_func_of_h, #修改为函数
+             'function': self.ic_func_of_h, #
              'bc': 'initial', 
              'component': 0             #h
             },
@@ -230,95 +230,8 @@ class Dynamic_BaseCase:
         plt.show()
 
 
-class Dynaminc_Rain_BaseCase(Dynamic_BaseCase):
-    """The base class of dynamic rain cases, the aims of this class are:
-        1: inform the required information of the dynamic rain case, such as the domain, time domain...
-        2: reduce some repeat work
-        3: uniform some configurations
-    """
-    def __init__(self):  
-        super().__init__()
-        #reset some configurations
-        self.pde_form = "VAR_ENTROPY_RAIN"   # see the SWE2D class for more details
-        self.time=[0,5]                  #the time domain, Note!!!:min
-
-        self.bcs = [ 
-            # left boundary
-             {"type": "dirichlet",             
-             "function": lambda x: 0.,       
-             "bc": "left",                     
-             "component": 1                   # u
-             }, 
-             {"type": "dirichlet",             
-             "function": lambda x: 0.,       
-             "bc": "left",                     
-             "component": 2                   #v 
-             }, 
-
-             # right boundary
-             {"type": "dirichlet",             
-             "function": lambda x: 0.,       
-             "bc": "right",                     
-             "component": 1                   
-             }, 
-             {"type": "dirichlet",             
-             "function": lambda x: 0.,       
-             "bc": "right",                     
-             "component": 2                   
-             }, 
-
-             # bottom boundary
-             {"type": "dirichlet",             
-             "function": lambda x: 0.,       
-             "bc": "bottom",                     
-             "component": 1                   
-             }, 
-             {"type": "dirichlet",             
-             "function": lambda x: 0.,
-             "bc": "bottom",                     
-             "component": 2                   
-             }, 
-
-             # top boundary
-             {"type": "dirichlet",             
-             "function": lambda x: 0.,       
-             "bc": "top",                     
-             "component": 1                   
-             }, 
-             {"type": "dirichlet",             
-             "function": lambda x: 0.,       
-             "bc": "top",                     
-             "component": 2                   
-             }            
-            ]
-                # [loss(pde),loss(bcs),loss(ics)] 
-        
-        self.loss_weights =np.array([10.,1.,1.  ,1  ,1,1,1]+            #pde loss weights
-                                    [1,1,  1,1,  1,1,  1,1]+ #bcs loss weights
-                                    [100,100,100])                   #ics loss weights
-        self.rain_func=self.rain_intensity
-    def __call__(self):
-        super().__call__()
-        self.inputs_to_SWE2D['rain_func']=self.rain_func
-        self.inputs_to_SWE2D['mul']=self.mul
-        return self.inputs_to_SWE2D
-    #add the rainfall intensity function
-    def rain_intensity(self,points)->torch.tensor:
-        """The default rainfall intensity (cm/min) during the time domain [0,5],
-            and the accumulative rainfall depth is 0.024019249187982226 m.
-            The rainfall type is the Chicago_Design_Storm,
-            please see the Chicago_Design_Storm class in the utilities.py.
-            """
-        _temp=torch.abs(points[:,2:]-2.5)/0.5
-        ## the accumulative rainfall depth (m) is  0.024019249187982226 m
-        rain=73.77884395200002*(_temp*0.13+18.1)/torch.pow(_temp+18.1,1.870) / 10. #cm/min
-        # rain=0.8*torch.sin(torch.pi/5*points[:,2:])   #  cm/min 2.546   easy case 
-        return rain
-
-
-
-class Dynamic_Dam_Break_Var_Case(Dynamic_BaseCase):
-    """quasi-2D dam break case in the variable form without entropy"""
+class Dynamic_Dam_Break_Var_Cons_Case(Dynamic_BaseCase):
+    """quasi-2D dam break case in the variable-conservation form"""
     def __init__(self):
         super().__init__()           
         #--reset the domain and time
@@ -375,7 +288,7 @@ class Dynamic_Dam_Break_Var_Case(Dynamic_BaseCase):
         self.bcs[5]['function']=lambda x:0.
 
         #choose the pde form and reset the loss weights
-        self.pde_form = "VAR"   # see the SWE2D class for more details
+        self.pde_form = "VAR_CONS"   # see the SWE2D class for more details
         self.loss_weights =np.array([1.,10.,10.   ,10,10,10]+            #pde loss weights
                                     [1,1,1,  1,1,1,  1,1,1,  1,1,1]+ #bcs loss weights
                                     [100,100,100])                   #ics loss weights    
@@ -403,8 +316,8 @@ class Dynamic_Dam_Break_Var_Case(Dynamic_BaseCase):
         return z,z_x,z_y
 
 
-class Dynamic_Dam_Break_Var_Entropy_Case(Dynamic_Dam_Break_Var_Case):
-    """quasi-2D dam break case with entropy"""
+class Dynamic_Dam_Break_Var_Cons_Entropy_Case(Dynamic_Dam_Break_Var_Cons_Case):
+    """quasi-2D dam break case in the variable-conservation form with entropy"""
     def __init__(self):
         super().__init__()
         #reset the pde form and loss weights
@@ -414,7 +327,7 @@ class Dynamic_Dam_Break_Var_Entropy_Case(Dynamic_Dam_Break_Var_Case):
                                     [100,100,100])                   #ics loss weights    
 
 
-class Dynamic_Dam_Break_Var_Primitive_Case(Dynamic_Dam_Break_Var_Case):
+class Dynamic_Dam_Break_Primitive_Var_Case(Dynamic_Dam_Break_Var_Cons_Case):
     """quasi-2D dam break case with primitive variables"""
     def __init__(self):
         super().__init__()
@@ -433,7 +346,7 @@ class Dynamic_Tidal_Var_Case(Dynamic_BaseCase):
         self.datapath = None
         self.geom=[[-2,2],[-2,2]]        #the domain of (x,y)
         self.time=[0,0.5]
-        self.pde_form="VAR"
+        self.pde_form="VAR_CONS"
 
         #set the periodic boundary condition, the "function" is not used in this case.
         if True:  #jsut for block the code
@@ -500,7 +413,7 @@ class Dynamic_Tidal_Var_Rain_Case(Dynamic_Tidal_Var_Case):
         super().__init__()
         # self.geom=[[-2,2],[-2,2]]        #the domain of (x,y)
         self.time=[0,.5]                    #min
-        self.pde_form="VAR_RAIN"
+        self.pde_form="VAR_CONS_RAIN"
         self.loss_weights =np.array([10.,1.,1.    ,1,1,1]+            #pde loss weights
                                     [1,1,1,  1,1,1, 1,1,1  ,1,1,1]+ #bcs loss weights
                                     [100,100,100])                   #ics loss weights
@@ -628,143 +541,6 @@ class Dynamic_Circular_Dam_Break_Var_Case(Dynamic_BaseCase):
         z_x=z
         z_y=z
         return z,z_x,z_y
-
-
-class Dyanmic_Circular_Dam_Break_Var_Entropy_Case(Dynamic_Circular_Dam_Break_Var_Case):
-    """2D circular dam break case with entropy"""
-    def __init__(self):
-        super().__init__()
-        #reset the pde form and loss weights
-        self.pde_form = "VAR_ENTROPY"   # see the SWE2D class for more details
-        self.loss_weights =np.array([10.,1.,1.  ,0.01,   10,10,10]+            #pde loss weights
-                                    [1,1,1,  1,1,1]+ #bcs loss weights  
-                                    [100,100,100])                   #ics loss weights    
-
-
-
-class Dynamic_Circular_Dam_Break_Var_Toro_Case(Dynamic_BaseCase):
-    """2D circular dam break case"""
-    def __init__(self):
-        super().__init__()
-        #--reset the domain and time
-        self.geom=[[-20,20],[-20,20]]        #the domain of (x,y)
-        self.time=[0,5]                  #the time domain
-        
-        #-reset to the periodic boundary condition and the initial conditions unchange
-        self.bcs = [
-            # left boundary
-            {"type": "periodic",               # boundary condition type
-             "bc": "left",                      # boundary  location    
-             'component_x':0,                   #x,y,t
-             "component": 0                    
-             }, 
-             {"type": "periodic",               # boundary condition type}
-             "bc": "left",                      # boundary  location    
-             'component_x':0,
-             "component": 1                     # component of the variabls,(u)
-             },
-             {"type": "periodic",             
-             "bc": "left",   
-             'component_x':0,                  
-             "component": 2                   #v
-             }, 
-
-             # right boundary
-             {"type": "periodic",             
-             "bc": "right",    
-             'component_x':0,                  
-             "component": 0                   
-             }, 
-             {"type": "periodic",             
-             "bc": "right",                     
-             "component": 1     ,
-             "component_x":0              
-             }, 
-             {"type": "periodic",             
-             "bc": "right",                     
-             "component": 2 ,
-             "component_x":0                 
-             }, 
-
-             # bottom boundary
-             {"type": "periodic",             
-             "bc": "bottom",                     
-             "component": 0  ,
-             "component_x":1                 
-             }, 
-             {"type": "periodic",             
-             "bc": "bottom",                     
-             "component": 1,
-             "component_x":1                   
-             }, 
-             {"type": "periodic",             
-             "bc": "bottom",                     
-             "component": 2 ,       
-             "component_x":1           
-             }, 
-
-             # top boundary
-             {"type": "periodic",             
-             "bc": "top",                     
-             "component": 0     ,
-             "component_x":1                 
-             }, 
-             {"type": "periodic",             
-             "bc": "top",                     
-             "component": 1     ,
-             "component_x":1                 
-             }, 
-             {"type": "periodic",             
-             "bc": "top",                     
-             "component": 2  ,
-             "component_x":1                 
-             }            
-            ]
-        
-    def ic_func_of_h(self,points):
-            """The initial condition function of the component h
-                points: shape=(n,3),the columns are x,y,t and n is the number of points
-                return: type:np.array,shape=(n,1)
-            """
-            #if r<3,then h=2.,and if 3<r, then h=1.m
-            x=points[:,0:1]
-            y=points[:,1:2]
-            h=.5+np.zeros_like(x)   
-            h[x**2+y**2<2.5**2]=2.5            #radius=2.5
-            return h
-    def z_func(self, points)->tuple[torch.tensor,torch.tensor,torch.tensor]:
-        """The topography function of z
-            points: shape=(n,2),the columns are x,y  
-            return: tuple[torch.tensor,torch.tensor,torch.tensor]; torch.tensor: shape=(n,1)  
-        """
-        #horizontal topography
-        z=torch.zeros_like(points[:,0:1])
-        z_x=z
-        z_y=z
-        return z,z_x,z_y
-
-
-class Dynamic_Cosine_Bump_Rain_Case(static_cases.Static_Cosine_Bump_Rain_Case):
-    #abandon this case
-    def __init__(self):
-        super().__init__()
-        #reset some parameters
-        self.cosine_bump.water_level=0    
-    def __call__(self):
-        return super().__call__()
-    
-class Dynamic_Cosine_Depression_Rain_Case(static_cases.Static_Cosine_Depression_Rain_Case):
-    #abandon this case
-    def __init__(self):    
-        super().__init__()
-        #reset some parameters
-        self.cosine_depression.water_level=0.
-    def __call__(self):
-        return super().__call__()
-
-
-    
-
     
 
 

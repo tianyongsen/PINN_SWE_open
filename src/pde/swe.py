@@ -39,19 +39,28 @@ class SWE2D(baseclass.BaseTimePDE):
             mul: int, the multiply of the default training points number, default is 4.
         """
         #basic check for pde_form
-        if pde_form not in ["VAR", "CONSER", 
-                            "VAR_ENTROPY_STABLE", 
-                            "VAR_ENTROPY_CONSERVATION",
-                            "VAR_ENTROPY_DT",
-                            "CONSER_ENTROPY", 
-                            "VAR_RAIN",
-                            'VAR_ENTROPY_RAIN',
-                            "VAR_PRIMITIVE"]:
-            raise ValueError("pde_form should be in pde_form list, see the class SWE2D for details")
+
+        PDE_FORM={  "VAR_CONS": self.swe_2d_var_cons,
+                    # "CONS": swe_2d_conser,   
+                    "VAR_CONS_ENTROPY_STABLE": self.swe_2d_var_cons_entropy_stable,
+                    "VAR_CONS_ENTROPY_CONSERVATION": self.swe_2d_var_cons_entropy_conservation,
+                    "VAR_CONS_ENTROPY_STABLE_DT": self.swe_2d_var_cons_entropy_stable_DT,
+                    "VAR_CONS_RAIN": self.swe_2d_var_cons_rain,
+                    "VAR_CONS_DT_RAIN": self.swe_2d_var_cons_DT_rain,
+                    "VAR_CONS_ENTROPY_STABLE_DT_RAIN": self.swe_2d_var_cons_entropy_stable_DT_rain,
+                    "VAR_PRIMITIVE": self.swe_primitive_var
+                 }
+        pde_rain=[ key for key in PDE_FORM.keys() if "RAIN" in key]                     #pde with rainfall
+        pde_with_entropy=[ key for key in PDE_FORM.keys() if "ENTROPY" in key]          #pde with entropy condtions
+        pde_without_entropy=[ key for key in PDE_FORM.keys() if "ENTROPY" not in key]   #pde without entropy condtions
+        if pde_form not in PDE_FORM.keys():
+            raise ValueError("pde_form should be in PDE_FORM, see the class SWE2D for details")
         #basic check for rain_func and pde_form
-        if rain_func is not None and pde_form not in ["VAR_RAIN","VAR_ENTROPY_RAIN"]:
-            raise ValueError("pde_form should be 'VAR_RAIN' or 'VAR_ENTROPY_RAIN' when rainf_func is not None")
-            
+        if rain_func is not None and pde_form not in pde_rain:
+            raise ValueError("pde_form should be with rain, see the class SWE2D for details")
+        
+        self.pde = PDE_FORM[pde_form]   
+
         # output dim
         self.output_dim = 3   #(h, u, v) or (h, hu, hv)
         # if pde_form in ["CONSER", "CONSER_ENTROPY"]:
@@ -69,11 +78,12 @@ class SWE2D(baseclass.BaseTimePDE):
         timedomain = dde.geometry.TimeDomain(self.bbox[4], self.bbox[5])
         self.geomtime = dde.geometry.GeometryXTime(self.geom, timedomain)
 
-        if pde_form in ["VAR", "VAR_RAIN", "VAR_PRIMITIVE"]: 
+
+        if pde_form in pde_without_entropy: #without entropy condtions
             self.set_pdeloss(num=6)   #6 items in defalut, see the return values of the pde funciton, such as swe_2d_var
         # elif pde_form in ["CONSER"]:
         #     self.set_pdeloss(num=9)   
-        elif pde_form in ["VAR_ENTROPY_STABLE", "VAR_ENTROPY_RAIN","VAR_ENTROPY_CONSERVATION"]:                                       
+        elif pde_form in pde_with_entropy: #with entropy condtions                             
             self.set_pdeloss(num=7)   #7 items in defalut, see the return values of thepde funciton, such as swe_2d_var
         
         #---------------------------------------------
@@ -116,332 +126,362 @@ class SWE2D(baseclass.BaseTimePDE):
         # train settings
         self.training_points(mul=mul)
 
-        # PDEs
-        def swe_2d_var(x, U):
-            """variables form of the swe is : (x,t)-->(h,u,v). This function is without entropy condition"""
-            z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+    # PDEs
+    def swe_2d_var_cons(self,x, U):
+        """variables-conservation form of the swe.
+            (x,y,t)-->(h,u,v)
+        """
+        z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
 
-            h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
+        h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
 
-            h_x=dde.grad.jacobian(U,x,i=0,j=0)
-            h_y=dde.grad.jacobian(U,x,i=0,j=1)
-            h_t=dde.grad.jacobian(U,x,i=0,j=2)
-            u_x=dde.grad.jacobian(U,x,i=1,j=0)
-            u_y=dde.grad.jacobian(U,x,i=1,j=1)
-            u_t=dde.grad.jacobian(U,x,i=1,j=2)
-            v_x=dde.grad.jacobian(U,x,i=2,j=0)
-            v_y=dde.grad.jacobian(U,x,i=2,j=1)
-            v_t=dde.grad.jacobian(U,x,i=2,j=2)
+        h_x=dde.grad.jacobian(U,x,i=0,j=0)
+        h_y=dde.grad.jacobian(U,x,i=0,j=1)
+        h_t=dde.grad.jacobian(U,x,i=0,j=2)
+        u_x=dde.grad.jacobian(U,x,i=1,j=0)
+        u_y=dde.grad.jacobian(U,x,i=1,j=1)
+        u_t=dde.grad.jacobian(U,x,i=1,j=2)
+        v_x=dde.grad.jacobian(U,x,i=2,j=0)
+        v_y=dde.grad.jacobian(U,x,i=2,j=1)
+        v_t=dde.grad.jacobian(U,x,i=2,j=2)
 
-            #mass conservation equation or mass equation residue
-            mass_equ= h_t + h_x*u  + h*u_x + h_y*v+ h*v_y   
-            #momentum conservation equation or momentum equation residue
-            momentum_equ_x=u*h_t+ h*u_t+ u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y +GRAVITY*h*(h_x+dz_dx)
-            momentum_equ_y=v*h_t + h*v_t+ v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x +GRAVITY*h*(h_y+dz_dy)
-            #non-negative condition and dry condition
-            with torch.no_grad():
-                heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
-            h_positive=h-heaviside_h*h 
-            u_dry=u-heaviside_h*u
-            v_dry=v-heaviside_h*v
-
-
-            return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,u_dry,v_dry]  #6 items
-        
-        def swe_2d_var_entropy_stable(x, U):  
-            """variables form of the swe is : (x,t)-->(h,u,v). This function is with entropy condition"""
-            z,z_x,z_y=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
-            h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
-
-            h_x=dde.grad.jacobian(U,x,i=0,j=0)
-            h_y=dde.grad.jacobian(U,x,i=0,j=1)
-            h_t=dde.grad.jacobian(U,x,i=0,j=2)
-            u_x=dde.grad.jacobian(U,x,i=1,j=0)
-            u_y=dde.grad.jacobian(U,x,i=1,j=1)
-            u_t=dde.grad.jacobian(U,x,i=1,j=2)
-            v_x=dde.grad.jacobian(U,x,i=2,j=0)
-            v_y=dde.grad.jacobian(U,x,i=2,j=1)
-            v_t=dde.grad.jacobian(U,x,i=2,j=2)
-
-            #mass conservation equation or mass equation residue#temp variables
-            u_squre,v_squre,uv,gh,gz=u**2,v**2,u*v,GRAVITY*h,GRAVITY*z
-            hu,hv=h*u,h*v
-            huv=hu*v          
-
-            #mass conservation equation or mass equation residue
-            mass_equ= h_t + (h_x*u  + h*u_x + h_y*v+ h*v_y)/100.    #你是什么傻逼，怎么会带这个。误了多少事情！！！
-            #momentum conservation equation or momentum equation residue
-            momentum_equ_x=u*h_t+ h*u_t+ u_squre*h_x + 2*hu*u_x+uv*h_y+ hv*u_y+hu*v_y +gh*(h_x+z_x)
-            momentum_equ_y=v*h_t + h*v_t+ v_squre*h_y + 2*hv*v_y+uv*h_x+ hu*v_x+hv*u_x +gh*(h_y+z_y)
-            #non-negative condition and dry condition
-            with torch.no_grad():
-                heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
-            h_positive=h-heaviside_h*h 
-            u_dry=u-heaviside_h*u
-            v_dry=v-heaviside_h*v
-            #entropy condition
-            entropy_condition=0.5*(u_squre+v_squre+2*gh+gz)*h_t + u*(0.5*(u_squre+v_squre)+2*gh+gz)*h_x+\
-                             v*(0.5*(u_squre+v_squre)+2*gh+gz)*h_y + \
-                             hu*u_t +h*(1.5*u_squre+0.5*v_squre+gh+gz)*u_x + huv*u_y + \
-                             hv*v_t + huv* v_x + h*(0.5*u_squre+1.5*v_squre+gh+gz)*v_y+\
-                             gh*(u*z_x+v*z_y)
-            entropy_condition=torch.relu(entropy_condition)   #less than 0
-
-            return [mass_equ,momentum_equ_x,momentum_equ_y,entropy_condition,h_positive,u_dry,v_dry]  #7 items
-
-                
-        def swe_2d_var_entropy_conservation(x, U):  
-            """variables form of the swe is : (x,t)-->(h,u,v). This function is with entropy condition"""
-            z,z_x,z_y=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
-            h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
-
-            h_x=dde.grad.jacobian(U,x,i=0,j=0)
-            h_y=dde.grad.jacobian(U,x,i=0,j=1)
-            h_t=dde.grad.jacobian(U,x,i=0,j=2)
-            u_x=dde.grad.jacobian(U,x,i=1,j=0)
-            u_y=dde.grad.jacobian(U,x,i=1,j=1)
-            u_t=dde.grad.jacobian(U,x,i=1,j=2)
-            v_x=dde.grad.jacobian(U,x,i=2,j=0)
-            v_y=dde.grad.jacobian(U,x,i=2,j=1)
-            v_t=dde.grad.jacobian(U,x,i=2,j=2)
-
-            #mass conservation equation or mass equation residue#temp variables
-            u_squre,v_squre,uv,gh,gz=u**2,v**2,u*v,GRAVITY*h,GRAVITY*z
-            hu,hv=h*u,h*v
-            huv=hu*v          
-
-            #mass conservation equation or mass equation residue
-            mass_equ= h_t + (h_x*u  + h*u_x + h_y*v+ h*v_y)/100.    #你是什么傻逼，怎么会带这个。误了多少事情！！！
-            #momentum conservation equation or momentum equation residue
-            momentum_equ_x=u*h_t+ h*u_t+ u_squre*h_x + 2*hu*u_x+uv*h_y+ hv*u_y+hu*v_y +gh*(h_x+z_x)
-            momentum_equ_y=v*h_t + h*v_t+ v_squre*h_y + 2*hv*v_y+uv*h_x+ hu*v_x+hv*u_x +gh*(h_y+z_y)
-            #non-negative condition and dry condition
-            with torch.no_grad():
-                heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
-            h_positive=h-heaviside_h*h 
-            u_dry=u-heaviside_h*u
-            v_dry=v-heaviside_h*v
-            #entropy condition
-            entropy_condition=0.5*(u_squre+v_squre+2*gh+gz)*h_t + u*(0.5*(u_squre+v_squre)+2*gh+gz)*h_x+\
-                             v*(0.5*(u_squre+v_squre)+2*gh+gz)*h_y + \
-                             hu*u_t +h*(1.5*u_squre+0.5*v_squre+gh+gz)*u_x + huv*u_y + \
-                             hv*v_t + huv* v_x + h*(0.5*u_squre+1.5*v_squre+gh+gz)*v_y+\
-                             gh*(u*z_x+v*z_y)
-
-            return [mass_equ,momentum_equ_x,momentum_equ_y,entropy_condition,h_positive,u_dry,v_dry]  #7 items
+        #mass conservation equation or mass equation residue
+        mass_equ= h_t + h_x*u  + h*u_x + h_y*v+ h*v_y   
+        #momentum conservation equation or momentum equation residue
+        momentum_equ_x=u*h_t+ h*u_t+ u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y +GRAVITY*h*(h_x+dz_dx)
+        momentum_equ_y=v*h_t + h*v_t+ v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x +GRAVITY*h*(h_y+dz_dy)
+        #non-negative condition and dry condition
+        with torch.no_grad():
+            heaviside_h=torch.heaviside(h-1e-6,torch.tensor(0.))
+        h_positive=h-heaviside_h*h 
+        u_dry=u-heaviside_h*u
+        v_dry=v-heaviside_h*v
 
 
-        def swe_2d_var_entropy_DT(x, U):  
-            """variables form of the swe is : (x,t)-->(h,u,v). 
-               This function is with entropy condition and dimensional transformation"""
-            z,z_x,z_y=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
-            h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
+        return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,u_dry,v_dry]  #6 items
+    
+    def swe_2d_var_cons_entropy_stable(self,x, U):  
+        """variables-conservation form of the swe.
+            (x,y,t)-->(h,u,v). 
+            This function is with entropy stable condition"""
+        z,z_x,z_y=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+        h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
 
-            h_x=dde.grad.jacobian(U,x,i=0,j=0)
-            h_y=dde.grad.jacobian(U,x,i=0,j=1)
-            h_t=dde.grad.jacobian(U,x,i=0,j=2)
-            u_x=dde.grad.jacobian(U,x,i=1,j=0)
-            u_y=dde.grad.jacobian(U,x,i=1,j=1)
-            u_t=dde.grad.jacobian(U,x,i=1,j=2)
-            v_x=dde.grad.jacobian(U,x,i=2,j=0)
-            v_y=dde.grad.jacobian(U,x,i=2,j=1)
-            v_t=dde.grad.jacobian(U,x,i=2,j=2)
+        h_x=dde.grad.jacobian(U,x,i=0,j=0)
+        h_y=dde.grad.jacobian(U,x,i=0,j=1)
+        h_t=dde.grad.jacobian(U,x,i=0,j=2)
+        u_x=dde.grad.jacobian(U,x,i=1,j=0)
+        u_y=dde.grad.jacobian(U,x,i=1,j=1)
+        u_t=dde.grad.jacobian(U,x,i=1,j=2)
+        v_x=dde.grad.jacobian(U,x,i=2,j=0)
+        v_y=dde.grad.jacobian(U,x,i=2,j=1)
+        v_t=dde.grad.jacobian(U,x,i=2,j=2)
 
-            #mass conservation equation or mass equation residue#temp variables
-            g_cm_min=9.80665                #cm/min^2
-            u_squre,v_squre,gh,gz=u**2,v**2,g_cm_min*h,g_cm_min*z
-            hu,hv=h*u,h*v
-            huv=hu*v       
+        #mass conservation equation or mass equation residue#temp variables
+        u_squre,v_squre,uv,gh,gz=u**2,v**2,u*v,GRAVITY*h,GRAVITY*z
+        hu,hv=h*u,h*v
+        huv=hu*v          
 
-            #--cm  and min scale
-            #mass conservation equation or mass equation residue
-            mass_equ= h_t +(h_x*u  + h*u_x + h_y*v+ h*v_y)/100.   #cm/min
-            #momentum conservation equation or momentum equation residue
-            momentum_equ_x=u*h_t+ h*u_t  + (u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y)/100.+g_cm_min*h*(h_x/100.+z_x)  #cm^2/min^2
-            momentum_equ_y=v*h_t +h*v_t  + (v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x)/100. +g_cm_min*h*(h_y/100.+z_y) #cm^2/min^2
+        #mass conservation equation or mass equation residue
+        mass_equ= h_t + h_x*u  + h*u_x + h_y*v+ h*v_y
+        #momentum conservation equation or momentum equation residue
+        momentum_equ_x=u*h_t+ h*u_t+ u_squre*h_x + 2*hu*u_x+uv*h_y+ hv*u_y+hu*v_y +gh*(h_x+z_x)
+        momentum_equ_y=v*h_t + h*v_t+ v_squre*h_y + 2*hv*v_y+uv*h_x+ hu*v_x+hv*u_x +gh*(h_y+z_y)
+        #non-negative condition and dry condition
+        with torch.no_grad():
+            heaviside_h=torch.heaviside(h-1e-6,torch.tensor(0.))
+        h_positive=h-heaviside_h*h 
+        u_dry=u-heaviside_h*u
+        v_dry=v-heaviside_h*v
+        #entropy condition
+        entropy_condition=0.5*(u_squre+v_squre+2*gh+gz)*h_t + u*(0.5*(u_squre+v_squre)+2*gh+gz)*h_x+\
+                            v*(0.5*(u_squre+v_squre)+2*gh+gz)*h_y + \
+                            hu*u_t +h*(1.5*u_squre+0.5*v_squre+gh+gz)*u_x + huv*u_y + \
+                            hv*v_t + huv* v_x + h*(0.5*u_squre+1.5*v_squre+gh+gz)*v_y+\
+                            gh*(u*z_x+v*z_y)
+        entropy_condition=torch.relu(entropy_condition)   #less than 0
 
-            #entropy condition
-            entropy_condition=0.5*(u_squre+v_squre+gh+2*gz*100.)*h_t + u*(0.5*(u_squre+v_squre)+2*gh+gz*100.)*h_x/100.+\
-                             v*(0.5*(u_squre+v_squre)+2*gh+gz*100.)*h_y/100. + \
-                             hu*u_t +h*(1.5*u_squre+0.5*v_squre+gh+gz*100.)*u_x/100. + huv*u_y/100. + \
-                             hv*v_t + huv* v_x/100. + h*(0.5*u_squre+1.5*v_squre+gh+gz*100.)*v_y/100.+\
-                             gh*(u*z_x+v*z_y)   #cm^3/min^3
-            entropy_condition=torch.relu(entropy_condition)   #less than 0
+        return [mass_equ,momentum_equ_x,momentum_equ_y,entropy_condition,h_positive,u_dry,v_dry]  #7 items
 
-            #non-negative condition and dry condition
-            with torch.no_grad():
-                heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
-            h_positive=h-heaviside_h*h 
-            u_dry=u-heaviside_h*u
-            v_dry=v-heaviside_h*v
-
-            return [mass_equ,momentum_equ_x,momentum_equ_y,entropy_condition,h_positive,u_dry,v_dry]  #7 items
-
-
-
-        def swe_2d_var_rain(x, U):  
-            """variables form of the swe is : (x,t)-->(h,u,v). 
-               This function is with rain term.
-               Note: unit (h,u,v)=(cm,cm/s,cm/s)"""
-            z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
-            rain=self.rain_func(x)          #rainfall intensity,cm/min
-            g_cm_min=9.80665                #cm/s^2
-
-            h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]   #cm,cm/s,cm/s
-
-            h_x=dde.grad.jacobian(U,x,i=0,j=0)
-            h_y=dde.grad.jacobian(U,x,i=0,j=1)
-            h_t=dde.grad.jacobian(U,x,i=0,j=2)
-            u_x=dde.grad.jacobian(U,x,i=1,j=0)
-            u_y=dde.grad.jacobian(U,x,i=1,j=1)
-            u_t=dde.grad.jacobian(U,x,i=1,j=2)
-            v_x=dde.grad.jacobian(U,x,i=2,j=0)
-            v_y=dde.grad.jacobian(U,x,i=2,j=1)
-            v_t=dde.grad.jacobian(U,x,i=2,j=2)
-
-            #--cm  and min scale
-            #mass conservation equation or mass equation residue
-            mass_equ= h_t +(h_x*u  + h*u_x + h_y*v+ h*v_y)/100.-rain   #cm/s
-            #momentum conservation equation or momentum equation residue
-            momentum_equ_x=u*h_t+ h*u_t  + (u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y)/100. + g_cm_min*h*(h_x/100.+dz_dx)  #cm^2/s^2
-            momentum_equ_y=v*h_t +h*v_t  + (v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x)/100. + g_cm_min*h*(h_y/100.+dz_dy) #cm^2/s^2
-
-            #non-negative condition and dry condition
-            with torch.no_grad():
-                heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
-            h_positive=h-heaviside_h*h    #cm
-            u_dry=u-heaviside_h*u         #cm/s
-            v_dry=v-heaviside_h*v         #cm/s
-            return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,u_dry,v_dry]  #6 items
-        
-        def swe_2d_var_entropy_rain(x, U):  
-            """variables form of the swe is : (x,t)-->(h,u,v). This function is with entropy condition"""
-            z,z_x,z_y=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
-            rain=self.rain_func(x)          #rainfall intensity,cm/min
-            h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
-
-            h_x=dde.grad.jacobian(U,x,i=0,j=0)
-            h_y=dde.grad.jacobian(U,x,i=0,j=1)
-            h_t=dde.grad.jacobian(U,x,i=0,j=2)
-            u_x=dde.grad.jacobian(U,x,i=1,j=0)
-            u_y=dde.grad.jacobian(U,x,i=1,j=1)
-            u_t=dde.grad.jacobian(U,x,i=1,j=2)
-            v_x=dde.grad.jacobian(U,x,i=2,j=0)
-            v_y=dde.grad.jacobian(U,x,i=2,j=1)
-            v_t=dde.grad.jacobian(U,x,i=2,j=2)
-
-            #temp variables
-            g_cm_min=9.80665                #cm/min^2
-            u_squre,v_squre,gh,gz=u**2,v**2,g_cm_min*h,g_cm_min*z
-            hu,hv=h*u,h*v
-            huv=hu*v       
-
-            #--cm  and min scale
-            #mass conservation equation or mass equation residue
-            mass_equ= h_t +(h_x*u  + h*u_x + h_y*v+ h*v_y)/100.-rain   #cm/min
-            #momentum conservation equation or momentum equation residue
-            momentum_equ_x=u*h_t+ h*u_t  + (u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y)/100.+g_cm_min*h*(h_x/100.+z_x)  #cm^2/min^2
-            momentum_equ_y=v*h_t +h*v_t  + (v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x)/100. +g_cm_min*h*(h_y/100.+z_y) #cm^2/min^2
-
-            #entropy condition
-            entropy_condition=0.5*(u_squre+v_squre+gh+2*gz*100.)*h_t + u*(0.5*(u_squre+v_squre)+2*gh+gz*100.)*h_x/100.+\
-                             v*(0.5*(u_squre+v_squre)+2*gh+gz*100.)*h_y/100. + \
-                             hu*u_t +h*(1.5*u_squre+0.5*v_squre+gh+gz*100.)*u_x/100. + huv*u_y/100. + \
-                             hv*v_t + huv* v_x/100. + h*(0.5*u_squre+1.5*v_squre+gh+gz*100.)*v_y/100.+\
-                             gh*(u*z_x+v*z_y)-\
-                             g_cm_min*(h+z*100.)*rain        #cm^3/min^3
-            entropy_condition=torch.relu(entropy_condition)   #less than 0
-
-            #non-negative condition and dry condition
-            with torch.no_grad():
-                heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
-            h_positive=h-heaviside_h*h 
-            u_dry=u-heaviside_h*u
-            v_dry=v-heaviside_h*v
-
-            return [mass_equ,momentum_equ_x,momentum_equ_y,entropy_condition,h_positive,u_dry,v_dry]  #7 items
-
-        # def swe_2d_conser(x, U):  
-        #     """conservation form of the swe is : (x,t)-->(h,hu,hv,hu2,hv2,huv). 
-        #     This function is without entropy condition and without rain term.
-        #     remark: we have test the form of (x,t)-->(h,hu,hv),then construct the hu2, hv2 and huv, 
-        #             and the results are bad. Maybe due to the division"""
-        #     z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
-
-        #     h,hu,hv,hu2,hv2,huv=U[:,0:1],U[:,1:2],U[:,2:3],U[:,3:4],U[:,4:5],U[:,5:6]
-
-        #     h_x=dde.grad.jacobian(U,x,i=0,j=0)
-        #     h_y=dde.grad.jacobian(U,x,i=0,j=1)
-        #     h_t=dde.grad.jacobian(U,x,i=0,j=2)
-        #     hu_x=dde.grad.jacobian(U,x,i=1,j=0)
-        #     # hu_y=dde.grad.jacobian(U,x,i=1,j=1)
-        #     hu_t=dde.grad.jacobian(U,x,i=1,j=2)
-        #     # hv_x=dde.grad.jacobian(U,x,i=2,j=0)
-        #     hv_y=dde.grad.jacobian(U,x,i=2,j=1)
-        #     hv_t=dde.grad.jacobian(U,x,i=2,j=2)
-        #     hu2_x=dde.grad.jacobian(U,x,i=3,j=0)
-        #     hv2_y=dde.grad.jacobian(U,x,i=4,j=1)
-        #     huv_x=dde.grad.jacobian(U,x,i=5,j=0)
-        #     huv_y=dde.grad.jacobian(U,x,i=5,j=1)
-
-        #     with torch.no_grad():
-        #         heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
             
-        #     #mass conservation equation or mass equation residue
-        #     mass_equ= h_t + hu_x  + hv_y  
-        #     #momentum conservation equation or momentum equation residue
-        #     momentum_equ_x=hu_t+ hu2_x+huv_y+GRAVITY*h*(h_x+dz_dx)
-        #     momentum_equ_y=hv_t+huv_x+hv2_y +GRAVITY*h*(h_y+dz_dy)
-        #     #non-negative condition and dry condition
-        #     h_positive=h-heaviside_h*h 
-        #     hu_dry=hu-heaviside_h*hu
-        #     hv_dry=hv-heaviside_h*hv
-        #     #identical relation
-        #     hu2_equ=10*(hu2*h-hu**2)   #with more larger weight
-        #     hv2_equ=10*(hv2*h-hv**2)
-        #     huv_equ=10*(huv*h-hu*hv)
-        #     return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,hu_dry,hv_dry,hu2_equ,hv2_equ,huv_equ]  #6 items
-            
-        def swe_primitive_var(x, U):
-            """primitive variables form of the swe is : (x,t)-->(h,u,v). This function is without entropy condition"""
-            z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+    def swe_2d_var_cons_entropy_conservation(self,x, U):  
+        """variables-conservation form of the swe.
+            (x,y,t)-->(h,u,v). 
+            This function is with entropy conservation condition"""
+        z,z_x,z_y=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+        h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
 
-            h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
+        h_x=dde.grad.jacobian(U,x,i=0,j=0)
+        h_y=dde.grad.jacobian(U,x,i=0,j=1)
+        h_t=dde.grad.jacobian(U,x,i=0,j=2)
+        u_x=dde.grad.jacobian(U,x,i=1,j=0)
+        u_y=dde.grad.jacobian(U,x,i=1,j=1)
+        u_t=dde.grad.jacobian(U,x,i=1,j=2)
+        v_x=dde.grad.jacobian(U,x,i=2,j=0)
+        v_y=dde.grad.jacobian(U,x,i=2,j=1)
+        v_t=dde.grad.jacobian(U,x,i=2,j=2)
 
-            h_x=dde.grad.jacobian(U,x,i=0,j=0)
-            h_y=dde.grad.jacobian(U,x,i=0,j=1)
-            h_t=dde.grad.jacobian(U,x,i=0,j=2)
-            u_x=dde.grad.jacobian(U,x,i=1,j=0)
-            u_y=dde.grad.jacobian(U,x,i=1,j=1)
-            u_t=dde.grad.jacobian(U,x,i=1,j=2)
-            v_x=dde.grad.jacobian(U,x,i=2,j=0)
-            v_y=dde.grad.jacobian(U,x,i=2,j=1)
-            v_t=dde.grad.jacobian(U,x,i=2,j=2)
+        #mass conservation equation or mass equation residue#temp variables
+        u_squre,v_squre,uv,gh,gz=u**2,v**2,u*v,GRAVITY*h,GRAVITY*z
+        hu,hv=h*u,h*v
+        huv=hu*v          
 
-            #mass conservation equation or mass equation residue
-            mass_equ= h_t + h_x*u  + h*u_x + h_y*v+ h*v_y   
-            #momentum conservation equation or momentum equation residue
-            momentum_equ_x=u_t+u*u_x+v*u_y+GRAVITY*h*(h_x+dz_dx)
-            momentum_equ_y=v_t+ v*v_y+u*v_x+GRAVITY*h*(h_y+dz_dy)
-            #non-negative condition and dry condition
-            with torch.no_grad():
-                heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
-            h_positive=h-heaviside_h*h 
-            u_dry=u-heaviside_h*u
-            v_dry=v-heaviside_h*v
+        #mass conservation equation or mass equation residue
+        mass_equ= h_t + h_x*u  + h*u_x + h_y*v+ h*v_y
+        #momentum conservation equation or momentum equation residue
+        momentum_equ_x=u*h_t+ h*u_t+ u_squre*h_x + 2*hu*u_x+uv*h_y+ hv*u_y+hu*v_y +gh*(h_x+z_x)
+        momentum_equ_y=v*h_t + h*v_t+ v_squre*h_y + 2*hv*v_y+uv*h_x+ hu*v_x+hv*u_x +gh*(h_y+z_y)
+        #non-negative condition and dry condition
+        with torch.no_grad():
+            heaviside_h=torch.heaviside(h-1e-6,torch.tensor(0.))
+        h_positive=h-heaviside_h*h 
+        u_dry=u-heaviside_h*u
+        v_dry=v-heaviside_h*v
+        #entropy condition
+        entropy_condition=0.5*(u_squre+v_squre+2*gh+gz)*h_t + u*(0.5*(u_squre+v_squre)+2*gh+gz)*h_x+\
+                            v*(0.5*(u_squre+v_squre)+2*gh+gz)*h_y + \
+                            hu*u_t +h*(1.5*u_squre+0.5*v_squre+gh+gz)*u_x + huv*u_y + \
+                            hv*v_t + huv* v_x + h*(0.5*u_squre+1.5*v_squre+gh+gz)*v_y+\
+                            gh*(u*z_x+v*z_y)
+
+        return [mass_equ,momentum_equ_x,momentum_equ_y,entropy_condition,h_positive,u_dry,v_dry]  #7 items
 
 
-            return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,u_dry,v_dry]  #6 items
+    def swe_2d_var_cons_entropy_stable_DT(self,x, U):  
+        """variables-conservation form of the swe with entropy stable condition and dimensional transformation.
+            The units of h,u,v are (cm, cm/min, cm/min)"""
+        z,z_x,z_y=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+        h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
+
+        h_x=dde.grad.jacobian(U,x,i=0,j=0)
+        h_y=dde.grad.jacobian(U,x,i=0,j=1)
+        h_t=dde.grad.jacobian(U,x,i=0,j=2)
+        u_x=dde.grad.jacobian(U,x,i=1,j=0)
+        u_y=dde.grad.jacobian(U,x,i=1,j=1)
+        u_t=dde.grad.jacobian(U,x,i=1,j=2)
+        v_x=dde.grad.jacobian(U,x,i=2,j=0)
+        v_y=dde.grad.jacobian(U,x,i=2,j=1)
+        v_t=dde.grad.jacobian(U,x,i=2,j=2)
+
+        #mass conservation equation or mass equation residue#temp variables
+        g_cm_min=9.80665                #cm/min^2
+        u_squre,v_squre,gh,gz=u**2,v**2,g_cm_min*h,g_cm_min*z
+        hu,hv=h*u,h*v
+        huv=hu*v       
+
+        #--cm  and min scale
+        #mass conservation equation or mass equation residue
+        mass_equ= h_t +(h_x*u  + h*u_x + h_y*v+ h*v_y)/100.   #cm/min
+        #momentum conservation equation or momentum equation residue
+        momentum_equ_x=u*h_t+ h*u_t  + (u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y)/100.+g_cm_min*h*(h_x/100.+z_x)  #cm^2/min^2
+        momentum_equ_y=v*h_t +h*v_t  + (v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x)/100. +g_cm_min*h*(h_y/100.+z_y) #cm^2/min^2
+
+        #entropy condition
+        entropy_condition=0.5*(u_squre+v_squre+gh+2*gz*100.)*h_t + u*(0.5*(u_squre+v_squre)+2*gh+gz*100.)*h_x/100.+\
+                            v*(0.5*(u_squre+v_squre)+2*gh+gz*100.)*h_y/100. + \
+                            hu*u_t +h*(1.5*u_squre+0.5*v_squre+gh+gz*100.)*u_x/100. + huv*u_y/100. + \
+                            hv*v_t + huv* v_x/100. + h*(0.5*u_squre+1.5*v_squre+gh+gz*100.)*v_y/100.+\
+                            gh*(u*z_x+v*z_y)   #cm^3/min^3
+        entropy_condition=torch.relu(entropy_condition)   #less than 0
+
+        #non-negative condition and dry condition
+        with torch.no_grad():
+            heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
+        h_positive=h-heaviside_h*h 
+        u_dry=u-heaviside_h*u
+        v_dry=v-heaviside_h*v
+
+        return [mass_equ,momentum_equ_x,momentum_equ_y,entropy_condition,h_positive,u_dry,v_dry]  #7 items
+
+    def swe_2d_var_cons_rain(self,x, U):  
+        """variables-conservation form of the swe with rain. 
+            The unit of h,u,v and rain are (m, m/s, m/s,m/s)
+        """
+        z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+        rain=self.rain_func(x)          #rainfall intensity,m/s
+        g_cm_min=9.80665               
+
+        h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]   
+
+        h_x=dde.grad.jacobian(U,x,i=0,j=0)
+        h_y=dde.grad.jacobian(U,x,i=0,j=1)
+        h_t=dde.grad.jacobian(U,x,i=0,j=2)
+        u_x=dde.grad.jacobian(U,x,i=1,j=0)
+        u_y=dde.grad.jacobian(U,x,i=1,j=1)
+        u_t=dde.grad.jacobian(U,x,i=1,j=2)
+        v_x=dde.grad.jacobian(U,x,i=2,j=0)
+        v_y=dde.grad.jacobian(U,x,i=2,j=1)
+        v_t=dde.grad.jacobian(U,x,i=2,j=2)
+
+        #--cm  and min scale
+        #mass conservation equation or mass equation residue
+        mass_equ= h_t +h_x*u  + h*u_x + h_y*v+ h*v_y-rain   #m/s
+        #momentum conservation equation or momentum equation residue
+        momentum_equ_x=u*h_t+ h*u_t  + u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y + g_cm_min*h*(h_x+dz_dx)  #m^2/s^2
+        momentum_equ_y=v*h_t +h*v_t  + v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x + g_cm_min*h*(h_y+dz_dy) #m^2/s^2
+
+        #non-negative condition and dry condition
+        with torch.no_grad():
+            heaviside_h=torch.heaviside(h-1e-6,torch.tensor(0.))
+        h_positive=h-heaviside_h*h    #m
+        u_dry=u-heaviside_h*u         #m/s
+        v_dry=v-heaviside_h*v         #m/s
+        return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,u_dry,v_dry]  #6 items
+    
+
+    def swe_2d_var_cons_DT_rain(self,x, U):  
+        """variables-conservation form of the swe with demensional transformation. 
+            This function is with rain term.
+            Note: unit (h,u,v,rain)=(cm,cm/s,cm/s,cm/s)"""
+        z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+        rain=self.rain_func(x)          #rainfall intensity,cm/s
+        g_cm_min=9.80665                #cm/s^2
+
+        h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]   #cm,cm/s,cm/s
+
+        h_x=dde.grad.jacobian(U,x,i=0,j=0)
+        h_y=dde.grad.jacobian(U,x,i=0,j=1)
+        h_t=dde.grad.jacobian(U,x,i=0,j=2)
+        u_x=dde.grad.jacobian(U,x,i=1,j=0)
+        u_y=dde.grad.jacobian(U,x,i=1,j=1)
+        u_t=dde.grad.jacobian(U,x,i=1,j=2)
+        v_x=dde.grad.jacobian(U,x,i=2,j=0)
+        v_y=dde.grad.jacobian(U,x,i=2,j=1)
+        v_t=dde.grad.jacobian(U,x,i=2,j=2)
+
+        #--cm  and min scale
+        #mass conservation equation or mass equation residue
+        mass_equ= h_t +(h_x*u  + h*u_x + h_y*v+ h*v_y)/100.-rain   #cm/s
+        #momentum conservation equation or momentum equation residue
+        momentum_equ_x=u*h_t+ h*u_t  + (u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y)/100. + g_cm_min*h*(h_x/100.+dz_dx)  #cm^2/s^2
+        momentum_equ_y=v*h_t +h*v_t  + (v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x)/100. + g_cm_min*h*(h_y/100.+dz_dy) #cm^2/s^2
+
+        #non-negative condition and dry condition
+        with torch.no_grad():
+            heaviside_h=torch.heaviside(h-1e-6,torch.tensor(0.))
+        h_positive=h-heaviside_h*h    #cm
+        u_dry=u-heaviside_h*u         #cm/s
+        v_dry=v-heaviside_h*v         #cm/s
+        return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,u_dry,v_dry]  #6 items
+    
+    def swe_2d_var_cons_entropy_stable_DT_rain(self,x, U):  
+        """variables-conservation form of the swe with rian, dimensional transformation and entropy condition."""
+        z,z_x,z_y=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+        rain=self.rain_func(x)          #rainfall intensity,cm/min
+        h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
+
+        h_x=dde.grad.jacobian(U,x,i=0,j=0)
+        h_y=dde.grad.jacobian(U,x,i=0,j=1)
+        h_t=dde.grad.jacobian(U,x,i=0,j=2)
+        u_x=dde.grad.jacobian(U,x,i=1,j=0)
+        u_y=dde.grad.jacobian(U,x,i=1,j=1)
+        u_t=dde.grad.jacobian(U,x,i=1,j=2)
+        v_x=dde.grad.jacobian(U,x,i=2,j=0)
+        v_y=dde.grad.jacobian(U,x,i=2,j=1)
+        v_t=dde.grad.jacobian(U,x,i=2,j=2)
+
+        #temp variables
+        g_cm_min=9.80665                #cm/min^2
+        u_squre,v_squre,gh,gz=u**2,v**2,g_cm_min*h,g_cm_min*z
+        hu,hv=h*u,h*v
+        huv=hu*v       
+
+        #--cm  and min scale
+        #mass conservation equation or mass equation residue
+        mass_equ= h_t +(h_x*u  + h*u_x + h_y*v+ h*v_y)/100.-rain   #cm/min
+        #momentum conservation equation or momentum equation residue
+        momentum_equ_x=u*h_t+ h*u_t  + (u**2*h_x + 2*h*u*u_x+u*v*h_y+ h*v*u_y+h*u*v_y)/100.+g_cm_min*h*(h_x/100.+z_x)  #cm^2/min^2
+        momentum_equ_y=v*h_t +h*v_t  + (v**2*h_y + 2*h*v*v_y+u*v*h_x+ h*u*v_x+h*v*u_x)/100. +g_cm_min*h*(h_y/100.+z_y) #cm^2/min^2
+
+        #entropy condition
+        entropy_condition=0.5*(u_squre+v_squre+gh+2*gz*100.)*h_t + u*(0.5*(u_squre+v_squre)+2*gh+gz*100.)*h_x/100.+\
+                            v*(0.5*(u_squre+v_squre)+2*gh+gz*100.)*h_y/100. + \
+                            hu*u_t +h*(1.5*u_squre+0.5*v_squre+gh+gz*100.)*u_x/100. + huv*u_y/100. + \
+                            hv*v_t + huv* v_x/100. + h*(0.5*u_squre+1.5*v_squre+gh+gz*100.)*v_y/100.+\
+                            gh*(u*z_x+v*z_y)-\
+                            g_cm_min*(h+z*100.)*rain        #cm^3/min^3
+        entropy_condition=torch.relu(entropy_condition)   #less than 0
+
+        #non-negative condition and dry condition
+        with torch.no_grad():
+            heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
+        h_positive=h-heaviside_h*h 
+        u_dry=u-heaviside_h*u
+        v_dry=v-heaviside_h*v
+
+        return [mass_equ,momentum_equ_x,momentum_equ_y,entropy_condition,h_positive,u_dry,v_dry]  #7 items
+
+    # def swe_2d_conser(self,x, U):  
+    #     """conservation form of the swe is : (x,t)-->(h,hu,hv,hu2,hv2,huv). 
+    #     This function is without entropy condition and without rain term.
+    #     remark: we have test the form of (x,t)-->(h,hu,hv),then construct the hu2, hv2 and huv, 
+    #             and the results are bad. Maybe due to the division"""
+    #     z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
+
+    #     h,hu,hv,hu2,hv2,huv=U[:,0:1],U[:,1:2],U[:,2:3],U[:,3:4],U[:,4:5],U[:,5:6]
+
+    #     h_x=dde.grad.jacobian(U,x,i=0,j=0)
+    #     h_y=dde.grad.jacobian(U,x,i=0,j=1)
+    #     h_t=dde.grad.jacobian(U,x,i=0,j=2)
+    #     hu_x=dde.grad.jacobian(U,x,i=1,j=0)
+    #     # hu_y=dde.grad.jacobian(U,x,i=1,j=1)
+    #     hu_t=dde.grad.jacobian(U,x,i=1,j=2)
+    #     # hv_x=dde.grad.jacobian(U,x,i=2,j=0)
+    #     hv_y=dde.grad.jacobian(U,x,i=2,j=1)
+    #     hv_t=dde.grad.jacobian(U,x,i=2,j=2)
+    #     hu2_x=dde.grad.jacobian(U,x,i=3,j=0)
+    #     hv2_y=dde.grad.jacobian(U,x,i=4,j=1)
+    #     huv_x=dde.grad.jacobian(U,x,i=5,j=0)
+    #     huv_y=dde.grad.jacobian(U,x,i=5,j=1)
+
+    #     with torch.no_grad():
+    #         heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
         
+    #     #mass conservation equation or mass equation residue
+    #     mass_equ= h_t + hu_x  + hv_y  
+    #     #momentum conservation equation or momentum equation residue
+    #     momentum_equ_x=hu_t+ hu2_x+huv_y+GRAVITY*h*(h_x+dz_dx)
+    #     momentum_equ_y=hv_t+huv_x+hv2_y +GRAVITY*h*(h_y+dz_dy)
+    #     #non-negative condition and dry condition
+    #     h_positive=h-heaviside_h*h 
+    #     hu_dry=hu-heaviside_h*hu
+    #     hv_dry=hv-heaviside_h*hv
+    #     #identical relation
+    #     hu2_equ=10*(hu2*h-hu**2)   #with more larger weight
+    #     hv2_equ=10*(hv2*h-hv**2)
+    #     huv_equ=10*(huv*h-hu*hv)
+    #     return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,hu_dry,hv_dry,hu2_equ,hv2_equ,huv_equ]  #6 items
+        
+    def swe_primitive_var(self,x, U):
+        """primitive variables form of the swe is : (x,t)-->(h,u,v). 
+        """
+        z,dz_dx,dz_dy=self.z_net(x[:,0:2])     #z and its derivative respect to x,y
 
-        PDE_FORM={  "VAR": swe_2d_var,
-                    # "CONSER": swe_2d_conser,   
-                    "VAR_ENTROPY_STABLE": swe_2d_var_entropy_stable,
-                    "VAR_ENTROPY_CONSERVATION": swe_2d_var_entropy_stable,
-                    "VAR_ENTROPY_DT": swe_2d_var_entropy_DT,
-                    # "CONSER_ENTROPY":  swe_2d_conser_entropy  #not used
-                    "VAR_RAIN": swe_2d_var_rain,
-                    "VAR_ENTROPY_RAIN": swe_2d_var_entropy_rain,
-                    "VAR_PRIMITIVE": swe_primitive_var
-                 }
-        self.pde = PDE_FORM[pde_form]   
+        h,u,v=U[:,0:1],U[:,1:2],U[:,2:3]
+
+        h_x=dde.grad.jacobian(U,x,i=0,j=0)
+        h_y=dde.grad.jacobian(U,x,i=0,j=1)
+        h_t=dde.grad.jacobian(U,x,i=0,j=2)
+        u_x=dde.grad.jacobian(U,x,i=1,j=0)
+        u_y=dde.grad.jacobian(U,x,i=1,j=1)
+        u_t=dde.grad.jacobian(U,x,i=1,j=2)
+        v_x=dde.grad.jacobian(U,x,i=2,j=0)
+        v_y=dde.grad.jacobian(U,x,i=2,j=1)
+        v_t=dde.grad.jacobian(U,x,i=2,j=2)
+
+        #mass conservation equation or mass equation residue
+        mass_equ= h_t + h_x*u  + h*u_x + h_y*v+ h*v_y   
+        #momentum conservation equation or momentum equation residue
+        momentum_equ_x=u_t+u*u_x+v*u_y+GRAVITY*h*(h_x+dz_dx)
+        momentum_equ_y=v_t+ v*v_y+u*v_x+GRAVITY*h*(h_y+dz_dy)
+        #non-negative condition and dry condition
+        with torch.no_grad():
+            heaviside_h=torch.heaviside(h-0.001,torch.tensor(0.))
+        h_positive=h-heaviside_h*h 
+        u_dry=u-heaviside_h*u
+        v_dry=v-heaviside_h*v
+
+
+        return [mass_equ,momentum_equ_x,momentum_equ_y,h_positive,u_dry,v_dry]  #6 items
+    
+
