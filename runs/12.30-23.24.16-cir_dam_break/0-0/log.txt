@@ -1,8 +1,0 @@
-***** Begin #0-0 *****
-Warning: 32768 points required, but 33048 points sampled.
-Compiling model...
-'compile' took 0.000596 s
-
-PDE Class Name: SWE2D
-Training model...
-
