@@ -69,7 +69,7 @@ if __name__ == "__main__":
     parser.add_argument('--plot-every', type=int, default=1000) #plot every 2000 steps
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--method', type=str, default="laaf")
-    parser.add_argument('--decay',type=list,default=['step',30000,1e-3/1e-5])
+    parser.add_argument('--decay',type=list,default=['step',30000,1e-5/1e-3])
 
     command_args = parser.parse_args()
 
